@@ -31,8 +31,13 @@ circuit of problems on each. Summit Map keeps a live picture of that,
 and of everyone climbing it.
 
 - **The wall, mapped.** Every climb sits on an interactive outline of
-  the board, exactly where it is on the wall. Filter by sent, unsent or
-  grade, and read the tape colour at a glance.
+  the board, exactly where it is on the wall. Filter by sent, unsent,
+  projects or grade, and read the tape colour at a glance.
+- **…and in 3D.** One tap stands the board up in 3D: orbit, zoom and
+  pan round the walls, and tap a climb to fly to it.
+- **Projects and a daily pick.** Star the climbs you're working, log
+  attempts until the send, and get one climb picked for your level
+  each day, with per-wall progress bars.
 - **Log your sends.** Tick a climb off and see your points, then compare
   with the rest of the wall on the per-board leaderboard.
 - **Grades you can argue with.** Community grade votes, star ratings and
@@ -45,8 +50,9 @@ and of everyone climbing it.
 - **Installable app.** A real PWA — home-screen install with the
   "Install app" button on your profile, plus a QR code and share link on
   the leaderboard.
-- **Seven themes**, mobile first, and no CDN or frontend build step:
-  plain templates, CSS custom properties and vanilla JS.
+- **Seven themes**, mobile first, and no frontend build step: plain
+  templates, CSS custom properties and vanilla JS. The only CDN request
+  is Three.js, fetched when someone first opens the 3D view.
 
 ## Screenshots
 

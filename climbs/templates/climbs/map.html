@@ -13,11 +13,13 @@
         </div>
         <div class="set-panel">
             <p class="set-current">{% for w in walls %}{{ w.wall_display }}: {% if w.selected %}{{ w.selected.label }}{% else %}—{% endif %}{% if not forloop.last %} · {% endif %}{% endfor %}</p>
+            <div class="map-extras" id="map-extras"></div>
             <div class="marker-filter" role="group" aria-label="Show climbs">
                 <span class="marker-filter-label">Show</span>
                 <button type="button" data-marker-filter="all" aria-pressed="true">All</button>
                 <button type="button" data-marker-filter="sent" aria-pressed="false">Sent</button>
                 <button type="button" data-marker-filter="unsent" aria-pressed="false">Unsent</button>
+                {% if user.is_authenticated %}<button type="button" data-marker-filter="projects" aria-pressed="false">Projects</button>{% endif %}
             </div>
             <label class="grade-search">
                 <span class="marker-filter-label">Grade</span>
@@ -64,9 +66,13 @@
             <span class="filter-badge" id="filter-badge" hidden>0</span>
         </button>
         {% endif %}
-        <button type="button" class="map-fit-btn" id="fit-wall" aria-label="Fit wall" title="Fit wall">
+        <button type="button" class="map-fit-btn" id="fit-wall" aria-label="Fit wall" title="Fit wall (F)">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3H3v6M15 3h6v6M9 21H3v-6M15 21h6v-6"/></svg>
         </button>
+        <button type="button" class="map-fit-btn map-3d-btn" id="view-3d" aria-pressed="false" title="Spin the wall in 3D (3)">3D</button>
+        <div id="wall3d" class="wall3d" hidden>
+            <p class="wall3d-hint">Drag to orbit · scroll or pinch to zoom · right-drag to pan · tap a climb</p>
+        </div>
         <div id="map-viewport">
             <div id="map-stack">
                 <div id="map-content">
@@ -75,7 +81,7 @@
                     <svg id="climb-layer" viewBox="0 0 {{ map_width }} {{ map_height }}"
                          xmlns="http://www.w3.org/2000/svg">
                         {% for climb in climbs %}
-                            <g class="climb-marker" data-climb-id="{{ climb.id }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
+                            <g class="climb-marker" data-climb-id="{{ climb.id }}" data-wall="{{ climb.wall }}" data-grade="{{ climb.display_grade }}" data-name="{{ climb.name|escape }}" data-colour="{{ climb.colour }}">
                                 <circle class="climb-dot" cx="{{ climb.x_percent }}" cy="{{ climb.y_percent }}" r="7"
                                         fill="{{ climb.colour }}" stroke="#ffffff" stroke-width="1.2"/>
                                 <text x="{{ climb.x_percent }}" y="{{ climb.y_percent }}"
@@ -227,6 +233,9 @@
             ` : `
                 <h4>This climb has been proposed ${esc(data.grade || '?')} — do you agree?</h4>
                 <div class="chips">${gradeBtns}</div>
+                <div class="vote-bar" role="img" aria-label="${votes.softer || 0} softer, ${votes.at || 0} at grade, ${votes.harder || 0} harder">
+                    <i class="vb-soft" style="flex:${votes.softer || 0}"></i><i class="vb-at" style="flex:${votes.at || 0}"></i><i class="vb-hard" style="flex:${votes.harder || 0}"></i>
+                </div>
                 <p class="muted">▲ ${votes.harder || 0} harder · ${votes.at || 0} at grade · ▼ ${votes.softer || 0} softer</p>
             `;
 
@@ -297,6 +306,13 @@
                         <button class="step-btn" id="t-plus" aria-label="One more try">+</button>
                     </div>
                     <button class="btn btn-md btn-send" id="p-send-ascent">Log send ✓</button>
+                    <div class="attempt-row">
+                        <span class="muted">${v.project
+                            ? (v.project.attempts ? v.project.attempts + (v.project.attempts === 1 ? ' attempt' : ' attempts') + ' logged. Keep going.' : 'On your projects list.')
+                            : 'Working it? Log your goes and the try count follows.'}</span>
+                        <button class="btn btn-sm btn-secondary" id="p-attempt" type="button">+ Attempt</button>
+                        <button class="btn btn-sm btn-secondary" id="p-project" type="button" aria-pressed="${!!v.project}">${v.project ? '★ Project' : '☆ Project'}</button>
+                    </div>
                 `}
                 <h4>Rate it</h4>
                 <div class="rate-row" id="p-stars" role="group" aria-label="Rate this climb">
@@ -344,7 +360,8 @@
                     }
                 });
             }
-            if (AUTHED) wirePopup(data.id, v.tries ?? 1, data.grade);
+            // An unsent project opens the stepper at attempts + 1.
+            if (AUTHED) wirePopup(data.id, v.tries ?? ((v.project ? v.project.attempts : 0) + 1), data.grade);
             sheetBody.querySelectorAll('[data-del-comment]').forEach(btn => {
                 btn.addEventListener('click', async () => {
                     try {
@@ -381,7 +398,9 @@
                         await api('/' + id + '/ascent/', 'POST', {tries});
                         // No reload: join the sent set, re-dim the
                         // markers and re-render the sheet in place.
+                        // The server closes the project on send.
                         SENT_IDS.add(parseInt(id, 10));
+                        PROJECT_IDS.delete(parseInt(id, 10));
                         applyMarkerFilter();
                         await refreshPopup();
                     } catch (e) {
@@ -390,6 +409,30 @@
                         sendBtn.disabled = false;
                     }
                 });
+            }
+            // Projects: a logged attempt stars the climb too; the
+            // star toggles it (unstarring drops the attempt count).
+            const attemptBtn = document.getElementById('p-attempt');
+            const projectBtn = document.getElementById('p-project');
+            async function projectCall(url, method) {
+                try {
+                    const data = await api(url, method);
+                    if (data.project) PROJECT_IDS.add(parseInt(id, 10));
+                    else PROJECT_IDS.delete(parseInt(id, 10));
+                    applyMarkerFilter();
+                    await refreshPopup();
+                } catch (e) {
+                    alert(e.message);
+                }
+            }
+            if (attemptBtn) {
+                attemptBtn.addEventListener('click', () =>
+                    projectCall('/' + id + '/attempt/', 'POST'));
+            }
+            if (projectBtn) {
+                projectBtn.addEventListener('click', () =>
+                    projectCall('/' + id + '/project/',
+                        projectBtn.getAttribute('aria-pressed') === 'true' ? 'DELETE' : 'POST'));
             }
             const undoBtn = document.getElementById('p-undo-ascent');
             if (undoBtn) {
@@ -565,14 +608,18 @@
         // Both choices stick on this device. Logging a send
         // updates the sheet and the markers in place, no reload.
         const SENT_IDS = new Set([{% for id in sent_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
+        const PROJECT_IDS = new Set([{% for id in project_ids %}{{ id }}{% if not forloop.last %}, {% endif %}{% endfor %}]);
+        const WALL_NAMES = Object.fromEntries([{% for w in walls %}["{{ w.wall|escapejs }}", "{{ w.wall_display|escapejs }}"]{% if not forloop.last %}, {% endif %}{% endfor %}]);
         const FILTER_KEY = 'summit-filter';
         const GRADE_KEY = 'summit-grade';
         const VIEW_KEY = 'summit-map-view';
+        const PICK_KEY = 'summit-pick';
         let markerFilter = 'all';
         let gradeFilter = 'all';
         try {
             const saved = localStorage.getItem(FILTER_KEY);
-            if (['all', 'sent', 'unsent'].includes(saved)) markerFilter = saved;
+            if (['all', 'sent', 'unsent'].includes(saved) ||
+                    (AUTHED && saved === 'projects')) markerFilter = saved;
             const savedGrade = localStorage.getItem(GRADE_KEY);
             if (savedGrade) gradeFilter = savedGrade;
         } catch (e) { /* private mode: stay on all */ }
@@ -619,9 +666,12 @@
                 }
                 m.style.display = '';
                 const dim = (markerFilter === 'sent' && !sent) ||
-                    (markerFilter === 'unsent' && sent);
+                    (markerFilter === 'unsent' && sent) ||
+                    (markerFilter === 'projects' &&
+                     !PROJECT_IDS.has(parseInt(m.dataset.climbId, 10)));
                 m.style.opacity = dim ? '0.25' : '';
             });
+            renderMapExtras();
             document.querySelectorAll('[data-marker-filter]').forEach(b => {
                 b.setAttribute('aria-pressed',
                     b.dataset.markerFilter === markerFilter ? 'true' : 'false');
@@ -637,6 +687,78 @@
                 localStorage.setItem(GRADE_KEY, gradeFilter);
             } catch (e) { /* private mode: filter lasts the visit */ }
         }
+        // Today's pick: one unsent climb within a grade of your level
+        // (one above the hardest grade you've sent three of), fixed for
+        // the day on this device. Logged out, it's a pick from the
+        // easy end. Wall progress: sent / total per wall on the set.
+        const gradeNum = (m) => {
+            const g = /^V(\d+)$/.exec(m.dataset.grade || '');
+            return g ? parseInt(g[1], 10) : null;
+        };
+        const markerId = (m) => parseInt(m.dataset.climbId, 10);
+        function todaysPick() {
+            const markers = [...document.querySelectorAll('.climb-marker')]
+                .filter(m => gradeNum(m) !== null);
+            const day = new Date().toDateString();
+            try {
+                const saved = JSON.parse(localStorage.getItem(PICK_KEY) || 'null');
+                const kept = saved && saved.day === day &&
+                    markers.find(m => markerId(m) === saved.id);
+                if (kept) return kept;
+            } catch (e) { /* private mode: pick again */ }
+            const counts = {};
+            markers.filter(m => SENT_IDS.has(markerId(m))).forEach(m => {
+                counts[gradeNum(m)] = (counts[gradeNum(m)] || 0) + 1;
+            });
+            const target = Math.max(-1, ...Object.keys(counts)
+                .filter(g => counts[g] >= 3).map(Number)) + 1;
+            const unsent = markers.filter(m => !SENT_IDS.has(markerId(m)));
+            const near = unsent.filter(m => Math.abs(gradeNum(m) - target) <= 1);
+            const pool = (near.length ? near : unsent)
+                .sort((a, b) => markerId(a) - markerId(b));
+            if (!pool.length) return null;
+            let h = 7;
+            for (const ch of day) h = (Math.imul(h, 31) + ch.charCodeAt(0)) | 0;
+            const pick = pool[Math.abs(h) % pool.length];
+            try {
+                localStorage.setItem(PICK_KEY, JSON.stringify({day, id: markerId(pick)}));
+            } catch (e) { /* private mode: recomputed next load */ }
+            return pick;
+        }
+        // Marker colours come from setters; keep only CSS-colour characters
+        // before they go into a style attribute.
+        const cssColour = (c) => String(c || '').replace(/[^#\w(),.%\s-]/g, '');
+        function renderMapExtras() {
+            const box = document.getElementById('map-extras');
+            if (!box) return;
+            const pick = todaysPick();
+            let html = '';
+            if (pick) {
+                const done = SENT_IDS.has(markerId(pick));
+                html += '<button type="button" class="pick-card' + (done ? ' done' : '') + '" id="pick-card">' +
+                    '<span class="pick-k">' + (done ? "✓ Today's pick sent" : "Today's pick") + '</span>' +
+                    '<span class="pick-c"><span class="colour-dot" style="background:' + cssColour(pick.dataset.colour) + '"></span>' +
+                    '<strong>' + esc(pick.dataset.name || 'Unnamed climb') + '</strong>' +
+                    '<span class="climb-result-grade">' + esc(pick.dataset.grade) + '</span></span>' +
+                    '<span class="muted">' + (AUTHED ? 'Picked for your level' : 'Picked for today') + ' · new pick at midnight</span></button>';
+            }
+            if (AUTHED) {
+                html += '<div class="wall-progress">' + Object.entries(WALL_NAMES).map(([wall, name]) => {
+                    const ms = [...document.querySelectorAll('.climb-marker')]
+                        .filter(m => m.dataset.wall === wall);
+                    if (!ms.length) return '';
+                    const sent = ms.filter(m => SENT_IDS.has(markerId(m))).length;
+                    return '<div class="wp-row"><span>' + esc(name) + '</span>' +
+                        '<span class="wp-bar" role="img" aria-label="' + sent + ' of ' + ms.length + ' sent"><i style="width:' +
+                        Math.round(100 * sent / ms.length) + '%"></i></span>' +
+                        '<span class="wp-num">' + sent + '/' + ms.length + '</span></div>';
+                }).join('') + '</div>';
+            }
+            box.innerHTML = html;
+            const card = document.getElementById('pick-card');
+            if (card) card.addEventListener('click', () => openSearchResult(pick));
+        }
+
         document.querySelectorAll('[data-marker-filter]').forEach(b => {
             b.addEventListener('click', () => {
                 markerFilter = b.dataset.markerFilter;
@@ -803,8 +925,37 @@
         // overlaps look predictable too.
         async function openClimb(id) {
             currentId = id;
+            if (window.Wall3D) window.Wall3D.focus(id);
             await refreshPopup();
         }
+
+        // Keyboard: / search, [ ] step through the visible climbs,
+        // F fit the wall, 3 toggle the 3D view.
+        function stepClimb(dir) {
+            const markers = [...document.querySelectorAll('.climb-marker')]
+                .filter(m => m.style.display !== 'none');
+            if (!markers.length) return;
+            const i = markers.findIndex(m => m.dataset.climbId === String(currentId));
+            const next = i < 0 ? (dir > 0 ? 0 : markers.length - 1)
+                : (i + dir + markers.length) % markers.length;
+            openSearchResult(markers[next]);
+        }
+        document.addEventListener('keydown', (e) => {
+            if (e.metaKey || e.ctrlKey || e.altKey ||
+                    e.target.closest('input, textarea, select')) return;
+            if (e.key === '/' && searchInput) {
+                e.preventDefault();
+                openFilter();
+                searchInput.focus();
+            } else if (e.key === ']' || e.key === '[') {
+                stepClimb(e.key === ']' ? 1 : -1);
+            } else if (e.key === 'f' || e.key === 'F') {
+                if (fitWall) fitWall.click();
+            } else if (e.key === '3') {
+                const toggle = document.getElementById('view-3d');
+                if (toggle) toggle.click();
+            }
+        });
         function dotDistance(marker, x, y) {
             const dot = marker.querySelector('.climb-dot');
             if (!dot) return null;
@@ -851,4 +1002,12 @@
             });
         });
     </script>
+    {# 3D view: Three.js loads only when someone first opens it. #}
+    <script type="importmap">
+        {"imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }}
+    </script>
+    <script type="module" src="{% static 'climbs/wall-3d.js' %}"></script>
 {% endblock %}

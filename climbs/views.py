@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model, login
 from django.contrib.auth.decorators import user_passes_test
 from django.core.paginator import Paginator
 from django.db import IntegrityError
-from django.db.models import Avg, Count, Sum
+from django.db.models import Avg, Count, F, Sum
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
@@ -20,6 +20,7 @@ from .models import (
     Comment,
     GradeSuggestion,
     NewsPost,
+    Project,
     Rating,
     TAG_CHOICES,
     TAG_VALUES,
@@ -61,8 +62,11 @@ def map_view(request):
     reveal_due_mystery_climbs()
     # Sent climbs show a green grade for the viewer who sent them.
     sent_ids = set()
+    project_ids = set()
     if request.user.is_authenticated:
         sent_ids = set(Ascent.objects.filter(
+            user=request.user).values_list("climb_id", flat=True))
+        project_ids = set(Project.objects.filter(
             user=request.user).values_list("climb_id", flat=True))
     walls = []
     for wall, wall_display in WALL_CHOICES:
@@ -102,6 +106,7 @@ def map_view(request):
     return render(request, "climbs/map.html", {
         "climbs": climbs,
         "sent_ids": sent_ids,
+        "project_ids": project_ids,
         "walls": walls,
         "has_sets": any(w["sets"] for w in walls),
         "archived_any": any(w["is_archived"] for w in walls),
@@ -402,11 +407,13 @@ def climb_detail_api(request, climb_id):
         ascent = climb.ascents.filter(user=request.user).first()
         rating = climb.ratings.filter(user=request.user).first()
         suggestion = climb.grade_suggestions.filter(user=request.user).first()
+        project = climb.projects.filter(user=request.user).first()
         viewer.update({
             "tries": ascent.tries if ascent else None,
             "points": ascent.points if ascent else None,
             "my_rating": rating.value if rating else None,
             "my_grade": suggestion.suggested_grade if suggestion else None,
+            "project": {"attempts": project.attempts} if project else None,
         })
     return JsonResponse({
         "id": climb.id,
@@ -574,7 +581,51 @@ def ascent_api(request, climb_id):
                   new_tries=ascent.tries, new_grade=climb.grade,
                   new_points=ascent.points)
     refresh_user_flags(request.user)
+    # Sending a project closes it.
+    Project.objects.filter(user=request.user, climb=climb).delete()
     return JsonResponse({"tries": ascent.tries, "points": ascent.points})
+
+
+def _open_project(request, climb_id):
+    """(project, None) for a climb the viewer hasn't sent yet, creating
+    the project if needed, or (None, error response)."""
+    denied = _login_required_json(request)
+    if denied:
+        return None, denied
+    climb = get_object_or_404(Climb, id=climb_id)
+    if Ascent.objects.filter(user=request.user, climb=climb).exists():
+        return None, JsonResponse(
+            {"error": "Already sent — nothing left to project."}, status=400)
+    project, _ = Project.objects.get_or_create(user=request.user, climb=climb)
+    return project, None
+
+
+@require_http_methods(["POST", "DELETE"])
+def project_api(request, climb_id):
+    """Star (POST) or unstar (DELETE) a climb as a project. Unstarring
+    drops its logged attempts too."""
+    if request.method == "DELETE":
+        denied = _login_required_json(request)
+        if denied:
+            return denied
+        Project.objects.filter(user=request.user, climb_id=climb_id).delete()
+        return JsonResponse({"project": None})
+    project, error = _open_project(request, climb_id)
+    if error:
+        return error
+    return JsonResponse({"project": {"attempts": project.attempts}})
+
+
+@require_http_methods(["POST"])
+def attempt_api(request, climb_id):
+    """Log one more go on an unsent climb; it becomes a project if it
+    wasn't one. The count seeds the try stepper when the send lands."""
+    project, error = _open_project(request, climb_id)
+    if error:
+        return error
+    Project.objects.filter(pk=project.pk).update(attempts=F("attempts") + 1)
+    project.refresh_from_db()
+    return JsonResponse({"project": {"attempts": project.attempts}})
 
 
 @require_http_methods(["POST"])

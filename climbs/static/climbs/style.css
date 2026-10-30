@@ -4198,3 +4198,176 @@ button.user-chip:hover {
     font: inherit;
     font-size: 0.8rem;
 }
+
+/* 3D wall view: a toggle stacked above Fit wall, and the canvas
+   filling the stage over the (hidden) 2D map. */
+.map-fit-btn.map-3d-btn {
+    bottom: calc(0.9rem + 44px + 0.5rem + env(safe-area-inset-bottom, 0px));
+    font-size: 0.85rem;
+    letter-spacing: 0.02em;
+}
+
+.map-fit-btn.map-3d-btn[aria-pressed="true"] {
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+.map-fit-btn.map-3d-btn:disabled {
+    opacity: 0.6;
+    cursor: progress;
+}
+
+@media (min-width: 1000px) {
+    .map-fit-btn.map-3d-btn {
+        bottom: calc(1rem + 44px + 0.5rem);
+    }
+}
+
+.wall3d {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+}
+
+.wall3d canvas {
+    position: absolute;
+    inset: 0;
+    display: block;
+    touch-action: none;
+}
+
+.wall3d-hint {
+    position: absolute;
+    left: 50%;
+    top: 0.7rem;
+    transform: translateX(-50%);
+    margin: 0;
+    padding: 0.3rem 0.7rem;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    font-size: 0.72rem;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Today's pick and wall progress at the top of the filter panel. */
+.map-extras {
+    display: grid;
+    gap: 0.6rem;
+    margin-bottom: 0.9rem;
+}
+
+.map-extras:empty {
+    display: none;
+}
+
+.pick-card {
+    display: grid;
+    gap: 0.25rem;
+    width: 100%;
+    padding: 0.7rem 0.85rem;
+    color: var(--text);
+    text-align: left;
+    background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+    border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--border));
+    border-radius: var(--r-btn);
+    font: inherit;
+    cursor: pointer;
+}
+
+.pick-card:hover,
+.pick-card:focus-visible {
+    border-color: var(--accent);
+}
+
+.pick-card.done {
+    background: color-mix(in srgb, var(--ok) 10%, var(--surface));
+}
+
+.pick-k {
+    color: var(--accent);
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.pick-c {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.pick-card .muted {
+    font-size: 0.75rem;
+}
+
+.wall-progress {
+    display: grid;
+    gap: 0.35rem;
+    font-size: 0.78rem;
+}
+
+.wp-row {
+    display: grid;
+    grid-template-columns: 6.5rem 1fr auto;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.wp-bar {
+    height: 6px;
+    overflow: hidden;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+}
+
+.wp-bar i {
+    display: block;
+    height: 100%;
+    background: var(--accent);
+    border-radius: inherit;
+}
+
+.wp-num {
+    color: var(--muted);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Climb sheet: attempts and project star, grade consensus bar. */
+#climb-popup .attempt-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.7rem;
+    font-size: 0.82rem;
+}
+
+#climb-popup .attempt-row .muted {
+    flex: 1 1 12rem;
+}
+
+#climb-popup #p-project[aria-pressed="true"] {
+    color: var(--accent-ink);
+    background: var(--accent);
+    border-color: var(--accent);
+}
+
+#climb-popup .vote-bar {
+    display: flex;
+    gap: 2px;
+    height: 8px;
+    margin: 0.6rem 0 0.4rem;
+    overflow: hidden;
+    background: var(--surface-2);
+    border-radius: var(--r-sm);
+}
+
+#climb-popup .vote-bar .vb-soft { background: var(--ok); }
+#climb-popup .vote-bar .vb-at { background: var(--muted); }
+#climb-popup .vote-bar .vb-hard { background: var(--danger); }

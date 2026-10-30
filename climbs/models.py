@@ -345,6 +345,18 @@ class Ascent(models.Model):
         unique_together = ('user', 'climb')
 
 
+class Project(models.Model):
+    """A climb someone is working: starred on the map, with the goes
+    logged before the send. Logging the send closes the project."""
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='projects')
+    climb = models.ForeignKey(Climb, on_delete=models.CASCADE, related_name='projects')
+    attempts = models.PositiveIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('user', 'climb')
+
+
 class AscentAudit(models.Model):
     """Every create, edit and delete of an ascent: who, when, and the
     old/new tries/grade/points. Timestamps are server-side

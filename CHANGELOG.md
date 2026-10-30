@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.0
+
+- Map: a 3D view. The 3D button (or the 3 key) stands the wall
+  diagram up as plywood panels with T-nuts and floats every climb
+  over its spot on a tape line, so you can orbit, zoom and pan round
+  the board. Overlapping markers stack upwards so each one stays
+  tappable; tapping one opens the usual sheet and flies the camera to
+  it with a ring on the floor. Filters, sends and set switches show up
+  live because the 3D view reads the 2D map. Three.js loads from a CDN
+  only when the view is first opened; the choice is remembered.
+- Projects: star a climb from its sheet, or log attempts with
+  + Attempt (which stars it too). The try stepper opens at attempts + 1,
+  sending closes the project, and a new Projects filter dims everything
+  else. Stored per account (`Project` model, migration 0006), via
+  `POST/DELETE /<id>/project/` and `POST /<id>/attempt/`.
+- Today's pick at the top of the filter panel: one unsent climb within
+  a grade of your level, fixed for the day on that device. Logged in,
+  it sits above a sent/total progress bar for each wall.
+- The grade vote shows a soft / at grade / hard bar above the counts.
+- Keyboard: `/` search, `[` and `]` step through the visible climbs,
+  `F` fits the wall, `3` toggles the 3D view.
+
 ## 1.2.0
 
 - Mystery climbs reveal their stored grade after seven days, on the

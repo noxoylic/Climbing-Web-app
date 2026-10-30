@@ -14,6 +14,7 @@ from .models import (
     ClimbSet,
     Comment,
     NewsPost,
+    Project,
     tag_for_grade,
 )
 from .scoring import MYSTERY_FIXED_POINTS, calculate_points
@@ -3877,3 +3878,75 @@ class MysteryRevealTests(ClimbTestMixin, TestCase):
         self.assertEqual(climb.tag, "yellow")
         self.assertEqual(
             ascent.points, calculate_points("V6", 1, "yellow"))
+
+
+class ProjectApiTests(ClimbTestMixin, TestCase):
+    """Starring a climb as a project and logging attempts on it."""
+
+    def setUp(self):
+        self.user = self.make_user("projector")
+        self.climb = self.make_climb(grade="V5")
+        self.project_url = reverse("climbs:climb-project", args=[self.climb.id])
+        self.attempt_url = reverse("climbs:climb-attempt", args=[self.climb.id])
+
+    def test_anonymous_cannot_project_or_attempt(self):
+        self.assertEqual(self.client.post(self.project_url).status_code, 403)
+        self.assertEqual(self.client.delete(self.project_url).status_code, 403)
+        self.assertEqual(self.client.post(self.attempt_url).status_code, 403)
+        self.assertFalse(Project.objects.exists())
+
+    def test_star_then_unstar(self):
+        self.client.force_login(self.user)
+        response = self.client.post(self.project_url)
+        self.assertEqual(response.json(), {"project": {"attempts": 0}})
+        # Starring twice keeps one project.
+        self.client.post(self.project_url)
+        self.assertEqual(Project.objects.count(), 1)
+        response = self.client.delete(self.project_url)
+        self.assertEqual(response.json(), {"project": None})
+        self.assertFalse(Project.objects.exists())
+
+    def test_attempts_count_up_and_star_the_climb(self):
+        self.client.force_login(self.user)
+        self.client.post(self.attempt_url)
+        response = self.client.post(self.attempt_url)
+        self.assertEqual(response.json(), {"project": {"attempts": 2}})
+        detail = self.client.get(
+            reverse("climbs:climb-detail", args=[self.climb.id])).json()
+        self.assertEqual(detail["viewer"]["project"], {"attempts": 2})
+        # The map knows which markers are projects.
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(
+            response, f"const PROJECT_IDS = new Set([{self.climb.id}])")
+
+    def test_attempts_are_per_user(self):
+        other = self.make_user("rival")
+        self.client.force_login(other)
+        self.client.post(self.attempt_url)
+        self.client.force_login(self.user)
+        detail = self.client.get(
+            reverse("climbs:climb-detail", args=[self.climb.id])).json()
+        self.assertIsNone(detail["viewer"]["project"])
+
+    def test_sending_closes_the_project(self):
+        self.client.force_login(self.user)
+        self.client.post(self.attempt_url)
+        response = self.client.post(
+            reverse("climbs:climb-ascent", args=[self.climb.id]),
+            json.dumps({"tries": 2}), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Project.objects.exists())
+
+    def test_sent_climb_cannot_be_projected(self):
+        self.client.force_login(self.user)
+        Ascent.objects.create(user=self.user, climb=self.climb, tries=1)
+        self.assertEqual(self.client.post(self.project_url).status_code, 400)
+        self.assertEqual(self.client.post(self.attempt_url).status_code, 400)
+        self.assertFalse(Project.objects.exists())
+
+    def test_map_ships_the_3d_view_and_extras(self):
+        response = self.client.get(reverse("climbs:map"))
+        self.assertContains(response, 'id="view-3d"')
+        self.assertContains(response, 'id="map-extras"')
+        self.assertContains(response, 'climbs/wall-3d')
+        self.assertTrue(finders.find("climbs/wall-3d.js"))
